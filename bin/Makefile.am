@@ -1,3 +1,5 @@
+CLEANFILES=
+BUILT_SOURCES=
 
 bin_PROGRAMS = nfcapd nfdump nfreplay nfexpire nfanon
 check_PROGRAMS = nftest nfgen nfreader
@@ -23,7 +25,7 @@ if FT2NFDUMP
 bin_PROGRAMS += ft2nfdump
 endif
 
-BUILT_SOURCES = grammar.h
+BUILT_SOURCES += grammar.h
 AM_YFLAGS = -d
 
 AM_CPPFLAGS = $(DEPS_CFLAGS)
@@ -35,7 +37,7 @@ AM_CFLAGS = -ggdb
 # libnfdump sources
 output =  output_json.c output_json.h 
 if AVROEXPORT
-output += output_avro.c output_avro.h
+output += output_avro.c output_avro.h flowdata.avsc flowdata_avsc.inc
 endif
 common =  nf_common.c nf_common.h 
 util = util.c util.h
@@ -70,6 +72,11 @@ libnfdump_la_CFLAGS =
 if AVROEXPORT
 libnfdump_la_LDFLAGS += $(avro_LDFLAGS)
 libnfdump_la_CFLAGS += $(avro_CFLAGS)
+BUILT_SOURCES += flowdata_avsc.inc
+CLEANFILES += flowdata_avsc.inc
+
+flowdata_avsc.inc: flowdata.avsc
+	xxd -i flowdata.avsc flowdata_avsc.inc
 endif
 
 nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h  \
@@ -162,4 +169,4 @@ endif
 
 check_DIST = inline.c collector_inline.c nffile_inline.c nfdump_inline.c heapsort_inline.c applybits_inline.c 
 check_DIST += test.sh nfdump.test.out parse_csv.pl AddExtension.txt	nfdump.test.diff
-CLEANFILES = lex.yy.c grammar.c grammar.h scanner.c scanner.h $(check_PROGRAMS)
+CLEANFILES += lex.yy.c grammar.c grammar.h scanner.c scanner.h $(check_PROGRAMS)
