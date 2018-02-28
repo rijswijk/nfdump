@@ -34,6 +34,9 @@ AM_CFLAGS = -ggdb
 
 # libnfdump sources
 output =  output_json.c output_json.h 
+if AVROEXPORT
+output += output_avro.c output_avro.h
+endif
 common =  nf_common.c nf_common.h 
 util = util.c util.h
 filelzo = minilzo.c minilzo.h lzoconf.h lzodefs.h lz4.c lz4.h nffile.c nffile.h nfx.c nfx.h 
@@ -63,7 +66,11 @@ lib_LTLIBRARIES = libnfdump.la
 libnfdump_la_SOURCES = $(output) $(common) $(util) $(filelzo) $(nflist) $(filter) $(exporter)
 #libnfdump_la_LIBADD = -lz
 libnfdump_la_LDFLAGS = -release 1.6.16
-
+libnfdump_la_CFLAGS = 
+if AVROEXPORT
+libnfdump_la_LDFLAGS += $(avro_LDFLAGS)
+libnfdump_la_CFLAGS += $(avro_CFLAGS)
+endif
 
 nfdump_SOURCES = nfdump.c nfdump.h nfstat.c nfstat.h nfexport.c nfexport.h  \
 	$(nflowcache) $(nfprof)

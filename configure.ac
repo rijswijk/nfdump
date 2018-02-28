@@ -266,6 +266,21 @@ AC_SUBST(PCAP_LIBS)
 AM_CONDITIONAL(BUILDNFPCAPD, false)
 )
 
+# Support exporting to Apache Avro files for use in Hadoop environments
+AC_ARG_ENABLE(avroexport, [AS_HELP_STRING([--enable-avroexport], [Enable exporting flow records in Apache Avro format for use in Haddoop environments (default is no)])], [
+   avroexport=${enableval} ], [avroexport=no])
+AS_IF([test "x$avroexport" = xyes], [ 
+	PKG_CHECK_MODULES([avro], [avro-c >= 1.7.7],, 
+	    [AC_MSG_ERROR([libavro 1.7.7 or newer not found])])
+	AC_SUBST(AVRO_CFLAGS)
+	AC_SUBST(AVRO_LIBS)
+	
+	AC_DEFINE_UNQUOTED(HAVE_AVROEXPORT, 1, [enable export of flow records in Apache Avro format for use in Hadoop environments])
+	AM_CONDITIONAL(AVROEXPORT, true)
+], [ 
+	AM_CONDITIONAL(AVROEXPORT, false)
+])
+
 # Check for structures
 AC_CHECK_MEMBER([struct sockaddr.sa_len],
  AC_DEFINE(HAVE_SOCKADDR_SA_LEN, 1, define if socket address structures have length fields),,[
