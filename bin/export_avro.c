@@ -29,8 +29,47 @@
  *  
  */
 
+#include "config.h"
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <avro.h>
+#include "export_avro.h"
+
+/*
+ * The Avro codec to use. The default setting is to use the gzip codec,
+ * which is the most space efficient and is always included in builds of
+ * the Avro library. If need be, and if it is available in your local build
+ * of the Avro library, you can also choose snappy, which will perform
+ * markedly better in terms of speed.
+ */
+#define DEFAULT_AVRO_CODEC	"deflate"
+
+/*
+ * The Avro writer block size; you may need to increase this if
+ * the writer fails to write records with the following error
+ * message:
+ *
+ * "Value too large for file block size"
+ */
+#define DJ_AVRO_BLOCKSIZE       65536
+
+/* Include the Avro schema */
+#include "flowdata_avsc.inc"
+
+static avro_schema_t            flowavro_schema;
+static avro_file_writer_t       flowavro_writer;
+static avro_value_iface_t*      flowavro_class;
+static avro_value_t             flowavro_single_record;
+
 int init_avro_export(const char *output_filename)
 {
+	/* Load the Avro schema */
+	if (avro_schema_from_json_length((const char*) flowdata_avsc, flowdata_avsc_len, &flowavro_schema) != 0)
+	{
+		return -1;
+	}
+
 	return 0;
 }
 

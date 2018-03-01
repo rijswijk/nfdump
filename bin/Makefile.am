@@ -70,7 +70,7 @@ libnfdump_la_SOURCES = $(output) $(common) $(util) $(filelzo) $(nflist) $(filter
 libnfdump_la_LDFLAGS = -release 1.6.16
 libnfdump_la_CFLAGS = 
 if AVROEXPORT
-libnfdump_la_LDFLAGS += $(avro_LDFLAGS)
+libnfdump_la_LDFLAGS += $(avro_LIBS)
 libnfdump_la_CFLAGS += $(avro_CFLAGS)
 BUILT_SOURCES += flowdata_avsc.inc
 CLEANFILES += flowdata_avsc.inc
@@ -103,7 +103,7 @@ nftrack_DEPENDENCIES = libnfdump.la
 nfcapd_SOURCES = nfcapd.c \
 	$(nfstatfile) $(launch) \
 	$(nfnet) $(collector) $(nfv1) $(nfv5v7) $(nfv9) $(ipfix) $(bookkeeper) $(expire)
-nfcapd_LDADD = -lnfdump 
+nfcapd_LDADD = -lnfdump
 nfcapd_DEPENDENCIES = libnfdump.la
 
 nfpcapd_SOURCES = nfpcapd.c \
