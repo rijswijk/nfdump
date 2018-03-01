@@ -72,6 +72,9 @@
 #include "ipconv.h"
 #include "util.h"
 #include "flist.h"
+#ifdef HAVE_AVROEXPORT
+#include "export_avro.h"
+#endif
 
 #ifndef DEVEL
 #   define dbg_printf(...) /* printf(__VA_ARGS__) */
@@ -251,9 +254,15 @@ static void usage(char *name);
 
 static void PrintSummary(stat_record_t *stat_record, int plain_numbers, int csv_output);
 
+#ifndef HAVE_AVROEXPORT
 static stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
 	uint64_t limitflows, int tag, int compress);
+#else
+static stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
+	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
+	uint64_t limitflows, int tag, int compress, int export_avro);
+#endif
 
 /* Functions */
 
@@ -306,6 +315,9 @@ static void usage(char *name) {
 					"\t\t json     json output format.\n"
 					"\t\t pipe     '|' separated legacy machine parseable output format.\n"
 					"\t\t\tmode may be extended by '6' for full IPv6 listing. e.g.long6, extended6.\n"
+#ifdef HAVE_AVROEXPORT
+					"-H <file>\tExport flow data in Apache Avro format for use in Hadoop environments.\n"
+#endif
 					"-E <file>\tPrint exporter ans sampling info for collected flows.\n"
 					"-v <file>\tverify netflow data file. Print version and blocks.\n"
 					"-x <file>\tverify extension records in netflow data file.\n"
@@ -359,9 +371,15 @@ char 		bps_str[NUMBER_STRING_SIZE], pps_str[NUMBER_STRING_SIZE], bpp_str[NUMBER_
 
 } // End of PrintSummary
 
+#ifndef HAVE_AVROEXPORT
 stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
 	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
 	uint64_t limitflows, int tag, int compress) {
+#else
+stat_record_t process_data(char *wfile, int element_stat, int flow_stat, int sort_flows,
+	printer_t print_header, printer_t print_record, time_t twin_start, time_t twin_end, 
+	uint64_t limitflows, int tag, int compress, int export_avro) {
+#endif
 common_record_t 	*flow_record, *record_ptr;
 master_record_t		*master_record;
 nffile_t			*nffile_w, *nffile_r;
@@ -626,6 +644,9 @@ int	v1_map_done = 0;
 							// this is buggy!
 							printf("Bug! - this code should never get executed in file %s line %d\n", __FILE__, __LINE__);
 						}
+#ifdef HAVE_AVROEXPORT
+						if (export_avro) flow_record_to_avro(master_record);
+#endif
 					} // sort_flows - else
 					} break; 
 				case ExtensionMapType: {
@@ -712,6 +733,9 @@ stat_record_t	sum_stat;
 printer_t 	print_header, print_record;
 nfprof_t 	profile_data;
 char 		*rfile, *Rfile, *Mdirs, *wfile, *ffile, *filter, *tstring, *stat_type;
+#ifdef HAVE_AVROEXPORT
+char		*avrofile;
+#endif
 char		*byte_limit_string, *packet_limit_string, *print_format, *record_header;
 char		*print_order, *query_file, *nameserver, *aggr_fmt;
 int 		c, ffd, ret, element_stat, fdump;
@@ -723,6 +747,9 @@ uint32_t	limitflows;
 char 		Ident[IDENTLEN];
 
 	rfile = Rfile = Mdirs = wfile = ffile = filter = tstring = stat_type = NULL;
+#ifdef HAVE_AVROEXPORT
+	avrofile = NULL;
+#endif
 	byte_limit_string = packet_limit_string = NULL;
 	fdump = aggregate = 0;
 	aggregate_mask	= 0;
@@ -760,7 +787,7 @@ char 		Ident[IDENTLEN];
 
 	Ident[0] = '\0';
 
-	while ((c = getopt(argc, argv, "6aA:Bbc:D:E:s:hn:i:jf:qyzr:v:w:J:K:M:NImO:R:XZt:TVv:x:l:L:o:")) != EOF) {
+	while ((c = getopt(argc, argv, "6aA:Bbc:D:E:s:hn:i:jf:qyzr:v:w:J:K:M:NImO:R:XZt:TVv:x:l:L:o:H:")) != EOF) {
 		switch (c) {
 			case 'h':
 				usage(argv[0]);
@@ -945,6 +972,9 @@ char 		Ident[IDENTLEN];
 				break;
 			case '6':	// print long IPv6 addr
 				Setv6Mode(1);
+				break;
+			case 'H':
+				avrofile = optarg;
 				break;
 			default:
 				usage(argv[0]);
@@ -1195,11 +1225,26 @@ char 		Ident[IDENTLEN];
 		}
 	}
 
+#ifdef HAVE_AVROEXPORT
+	if (init_avro_export(avrofile) != 0) {
+		LogError("Failed to open Apache Avro file '%s'.", avrofile);
+		exit(255);
+	}
+#endif
+
 	nfprof_start(&profile_data);
 	sum_stat = process_data(wfile, element_stat, aggregate || flow_stat, print_order != NULL,
 						print_header, print_record, t_start, t_end, 
-						limitflows, do_tag, compress);
+						limitflows, do_tag, compress
+#ifdef HAVE_AVROEXPORT
+						, avrofile != NULL
+#endif
+						);
 	nfprof_end(&profile_data, total_flows);
+
+#ifdef HAVE_AVROEXPORT
+	finish_avro_export();
+#endif
 
 	if ( total_bytes == 0 ) {
 		printf("No matched flows\n");

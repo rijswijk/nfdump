@@ -29,14 +29,16 @@
  *  
  */
 
-#ifndef _OUTPUT_AVRO_H
-#define _OUTPUT_AVRO_H
+int init_avro_export(const char *output_filename)
+{
+	return 0;
+}
 
-int init_avro_export(const char *output_filename);
+void flow_record_to_avro(void *record)
+{
+}
 
-void flow_record_to_avro(void *record, char **s, int tag);
-
-void finish_avro_export(void);
-
-#endif /* !_OUTPUT_AVRO_H */
+void finish_avro_export(void)
+{
+}
 

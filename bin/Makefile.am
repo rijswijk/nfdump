@@ -37,7 +37,7 @@ AM_CFLAGS = -ggdb
 # libnfdump sources
 output =  output_json.c output_json.h 
 if AVROEXPORT
-output += output_avro.c output_avro.h flowdata.avsc flowdata_avsc.inc
+output += export_avro.c export_avro.h flowdata.avsc flowdata_avsc.inc
 endif
 common =  nf_common.c nf_common.h 
 util = util.c util.h
