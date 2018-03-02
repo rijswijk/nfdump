@@ -1,4 +1,5 @@
 /*
+ *  Copyright (c) 2017, Peter Haag
  *  Copyright (c) 2018, SURFnet bv
  *  Copyright (c) 2018, Roland van Rijswijk-Deij
  *  All rights reserved.
@@ -29,13 +30,43 @@
  *  
  */
 
+/*
+ * TODO:
+ * Unfortunately, the Apache Avro format only supports signed integer values,
+ * which is probably an annoying habit inherited from its roots in the Java
+ * ecosystem. This means that the "int" and "long" values, in which, for
+ * example, the number of bytes or packets are encoded will flip to negative
+ * numbers if the highest bit is set. While this seems unlikely, if it occurs
+ * we may need to re-think how to encode these values in Avro files.
+ */
+
 #include "config.h"
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <avro.h>
 #include <assert.h>
+#include <stddef.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <time.h>
+#include <ctype.h>
+#include <errno.h>
+
+#ifdef HAVE_STDINT_H
+#include <stdint.h>
+#endif
+
+#include "nffile.h"
+#include "util.h"
+#include "nf_common.h"
 #include "export_avro.h"
+
+#ifdef NSEL
+#warning "NSEL support not yet implemented for Apache Avro export"
+#endif
 
 /*
  * The Avro codec to use. The default setting is to use the gzip codec,
@@ -153,7 +184,7 @@ static void wipe_avro_record(void)
  * in a fixed field, and one that sets a value in an optional field (an Avro
  * union).
  */
-static void avro_set_long_field(const char *fieldname, long value)
+static void avro_set_long_field(const char *fieldname, long long value)
 {
 	avro_value_t	rec_field;
 
@@ -161,7 +192,7 @@ static void avro_set_long_field(const char *fieldname, long value)
 	assert(avro_value_set_long(&rec_field, value) == 0);
 }
 
-static void avro_set_long_union(const char *fieldname, long value)
+static void avro_set_long_union(const char *fieldname, long long value)
 {
 	avro_value_t	rec_field;
 	avro_value_t	rec_branch;
@@ -243,10 +274,334 @@ static void avro_set_string_union(const char *fieldname, const char *value)
 	assert(avro_value_set_string(&rec_branch, value) == 0);
 }
 
+/* Convert TCP flags to a string, based on the JSON outputter */
+static void tcp_flags_to_str(master_record_t *r, char *string) 
+{
+	// if record contains unusual flags, print the flags in hex as 0x.. number
+	if ( r->tcp_flags > 63 ) 
+	{
+		snprintf(string, 7, "0x%2x", r->tcp_flags );
+	} 
+	else 
+	{
+		snprintf(string, 7, "%c%c%c%c%c%c",
+			r->tcp_flags & 32 ? 'U' : '.',
+			r->tcp_flags & 16 ? 'A' : '.',
+			r->tcp_flags &  8 ? 'P' : '.',
+			r->tcp_flags &  4 ? 'R' : '.',
+			r->tcp_flags &  2 ? 'S' : '.',
+			r->tcp_flags &  1 ? 'F' : '.');
+	}
+}
+
+/* Output a flow record to the Avro file; based on the JSON outputter */
 void flow_record_to_avro(void *record)
 {
+	master_record_t	*r		= (master_record_t *) record;
+	extension_map_t	*extension_map	= r->map_ref;
+	long long	ts		= 0L;
+	char		tcp_flags[16]	= { 0 };
+	int		i		= 0;
+	int		id		= 0;
+
 	/* Start with a clean slate */
 	wipe_avro_record();
+
+	/* Start time of the flow in milliseconds */
+	ts = (r->first * 1000L) + r->msec_first;
+	avro_set_long_field("start_ts", ts);
+
+	/* End time of the flow in milliseconds */
+	ts = (r->last * 1000L) + r->msec_last;
+	avro_set_long_field("end_ts", ts);
+
+	/* Flow type */
+	avro_set_string_field("type", TestFlag(r->flags, FLAG_EVENT) ? "EVENT" : "FLOW");
+
+	/* Is the flow sampled? */
+	avro_set_boolean_field("sampled", TestFlag(r->flags, FLAG_SAMPLED) ? 1 : 0);
+
+	/* The system ID of the flow exporter */
+	avro_set_long_field("export_sysid", r->exporter_sysid);
+
+	/* The protocol */
+	avro_set_int_field("protocol", r->prot);
+
+	/* Source and destination IP */
+	if (TestFlag(r->flags,FLAG_IPV6_ADDR ) != 0)
+	{
+		/* This is an IPv6 flow */
+		uint64_t	_src[2]			= { 0 };
+		uint64_t	_dst[2]			= { 0 };
+		char		ipstr[INET6_ADDRSTRLEN]	= { 0 };
+
+		_src[0] = htonll(r->V6.srcaddr[0]);
+		_src[1] = htonll(r->V6.srcaddr[1]);
+		_dst[0] = htonll(r->V6.dstaddr[0]);
+		_dst[1] = htonll(r->V6.dstaddr[1]);
+
+		assert(inet_ntop(AF_INET6, _src, ipstr, INET6_ADDRSTRLEN) != NULL);
+
+		avro_set_string_union("src_v6_str", ipstr);
+		avro_set_long_union("src_v6_int_hi", r->V6.srcaddr[0]);
+		avro_set_long_union("src_v6_int_lo", r->V6.srcaddr[1]);
+
+		assert(inet_ntop(AF_INET6, _dst, ipstr, INET6_ADDRSTRLEN) != NULL);
+
+		avro_set_string_union("dst_v6_str", ipstr);
+		avro_set_long_union("dst_v6_int_hi", r->V6.dstaddr[0]);
+		avro_set_long_union("dst_v6_int_lo", r->V6.dstaddr[1]);
+	} 
+	else 
+	{
+		/* This is an IPv4 flow */
+		uint32_t	_src			= 0;
+		uint32_t	_dst			= 0;
+		char		ipstr[INET_ADDRSTRLEN]	= { 0 };
+
+		_src = htonl(r->V4.srcaddr);
+		_dst = htonl(r->V4.dstaddr);
+
+		assert(inet_ntop(AF_INET, &_src, ipstr, INET_ADDRSTRLEN) != NULL);
+
+		avro_set_string_union("src_v4_str", ipstr);
+		avro_set_int_union("src_v4_int", r->V4.srcaddr);
+
+		assert(inet_ntop(AF_INET, &_dst, ipstr, INET_ADDRSTRLEN) != NULL);
+
+		avro_set_string_union("dst_v4_str", ipstr);
+		avro_set_int_union("dst_v4_int", r->V4.dstaddr);
+	}
+	
+	/* ICMP information or source and destination port */
+	if ( r->prot == IPPROTO_ICMP || r->prot == IPPROTO_ICMPV6 ) 
+	{ 
+		avro_set_int_union("icmp_type", r->icmp_type);
+		avro_set_int_union("icmp_code", r->icmp_code);
+	} 
+	else 
+	{
+		avro_set_int_union("src_port", r->srcport);
+		avro_set_int_union("dst_port", r->dstport);
+	}
+
+	/* Forwarding status */
+	avro_set_int_field("fwd_status", r->fwd_status);
+	
+	/* TCP flags */
+	tcp_flags_to_str(r, tcp_flags);
+	avro_set_string_field("tcp_flags", tcp_flags);
+
+	/* Source TOS */
+	avro_set_int_field("src_tos", r->tos);
+
+	/* Number of packets in the flow */
+	avro_set_long_field("in_packets", r->dPkts);
+
+	/* Number of bytes in the flow */
+	avro_set_long_field("in_bytes", r->dOctets);
+
+	/* Process extension fields */
+	i = 0;
+	while ((id = extension_map->ex_id[i]) != 0) 
+	{
+		switch(id) 
+		{
+		case EX_IO_SNMP_2:
+		case EX_IO_SNMP_4:
+				avro_set_int_union("input_snmp", r->input);
+				avro_set_int_union("output_snmp", r->output);
+				break;
+		case EX_AS_2:
+		case EX_AS_4:
+				avro_set_int_union("src_as", r->srcas);
+				avro_set_int_union("dst_as", r->dstas);
+				break;
+		case EX_BGPADJ:
+				avro_set_int_union("next_as", r->bgpNextAdjacentAS);
+				avro_set_int_union("prev_as", r->bgpPrevAdjacentAS);
+				break;
+		case EX_MULIPLE:
+				avro_set_int_union("src_mask", r->src_mask);
+				avro_set_int_union("dst_mask", r->dst_mask);
+				avro_set_int_union("dst_tos", r->dst_tos);
+				avro_set_int_union("direction", r->dir);
+				break;
+		case EX_NEXT_HOP_v4: 
+			{
+				uint32_t	_ip			= 0;
+				char		ipstr[INET_ADDRSTRLEN]	= { 0 };
+
+				_ip = htonl(r->ip_nexthop.V4);
+
+				assert(inet_ntop(AF_INET, &_ip, ipstr, INET_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("ip4_next_hop_str", ipstr);
+			} 
+			break;
+		case EX_NEXT_HOP_v6: 
+			{
+				uint64_t	_ip[2]			= { 0 };
+				char		ipstr[INET6_ADDRSTRLEN]	= { 0 };
+
+				_ip[0] = htonll(r->ip_nexthop.V6[0]);
+				_ip[1] = htonll(r->ip_nexthop.V6[1]);
+
+				assert(inet_ntop(AF_INET6, _ip, ipstr, INET6_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("ip6_next_hop_str", ipstr);
+			} 
+			break;
+		case EX_NEXT_HOP_BGP_v4: 
+			{
+				uint32_t	_ip			= 0;
+				char		ipstr[INET_ADDRSTRLEN]	= { 0 };
+
+				_ip = htonl(r->bgp_nexthop.V4);
+
+				assert(inet_ntop(AF_INET, &_ip, ipstr, INET_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("bgp4_next_hop_str", ipstr);
+			} 
+			break;
+		case EX_NEXT_HOP_BGP_v6: 
+			{
+				uint64_t	_ip[2]			= { 0 };
+				char		ipstr[INET6_ADDRSTRLEN]	= { 0 };
+
+				_ip[0] = htonll(r->bgp_nexthop.V6[0]);
+				_ip[1] = htonll(r->bgp_nexthop.V6[1]);
+
+				assert(inet_ntop(AF_INET6, _ip, ipstr, INET6_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("bgp6_next_hop_str", ipstr);
+			} 
+			break;
+		case EX_VLAN:
+			avro_set_int_union("src_vlan", r->src_vlan);
+			avro_set_int_union("dst_vlan", r->dst_vlan);
+			break;
+		case EX_OUT_PKG_4:
+		case EX_OUT_PKG_8:
+			avro_set_long_union("out_packets", r->out_pkts);
+			break;
+		case EX_OUT_BYTES_4:
+		case EX_OUT_BYTES_8:
+			avro_set_long_union("out_bytes", r->out_bytes);
+			break;
+		case EX_AGGR_FLOWS_4:
+		case EX_AGGR_FLOWS_8:
+			avro_set_long_union("aggr_flows", r->aggr_flows);
+			break;
+		case EX_MAC_1: 
+			{
+				int	j	= 0;
+				char	mac1_str[(6 * 3) + 2]	= { 0 };
+				char	mac2_str[(6 * 3) + 2]	= { 0 };
+
+				for (j = 0; j < 6; j++)
+				{
+					snprintf(&mac1_str[j*3], 4, "%02x:", (unsigned int) (r->in_src_mac >> (j*8)) & 0xFF);
+					snprintf(&mac2_str[j*3], 4, "%02x:", (unsigned int) (r->out_dst_mac >> (j*8)) & 0xFF);
+				}
+
+				mac1_str[(6*3)-1] = '\0';
+				mac2_str[(6*3)-1] = '\0';
+
+				avro_set_string_union("in_src_mac", mac1_str);
+				avro_set_string_union("out_dst_mac", mac2_str);
+			}
+			break;
+		case EX_MAC_2: 
+			{
+				int	j	= 0;
+				char	mac1_str[(6 * 3) + 2]	= { 0 };
+				char	mac2_str[(6 * 3) + 2]	= { 0 };
+
+				for (j = 0; j < 6; j++)
+				{
+					snprintf(&mac1_str[j*3], 4, "%02x:", (unsigned int) (r->in_dst_mac >> (j*8)) & 0xFF);
+					snprintf(&mac2_str[j*3], 4, "%02x:", (unsigned int) (r->out_src_mac >> (j*8)) & 0xFF);
+				}
+
+				mac1_str[(6*3)-1] = '\0';
+				mac2_str[(6*3)-1] = '\0';
+
+				avro_set_string_union("in_dst_mac", mac1_str);
+				avro_set_string_union("out_src_mac", mac2_str);
+			}
+			break;
+		/*case EX_MPLS: {
+				unsigned int i;
+				for ( i=0; i<10; i++ ) {
+					snprintf(_s, slen-1,
+"	\"mpls_%u\" : \"%u-%u-%u\",\n", i+1
+, r->mpls_label[i] >> 4 , (r->mpls_label[i] & 0xF ) >> 1, r->mpls_label[i] & 1 );
+					_slen = strlen(data_string);
+					_s = data_string + _slen;
+					slen = STRINGSIZE - _slen;
+				}
+			} break;
+		case EX_ROUTER_IP_v4: {
+				uint32_t _ip;
+				as[0] = 0;
+				_ip = htonl(r->ip_router.V4);
+				inet_ntop(AF_INET, &_ip, as, sizeof(as));
+				as[IP_STRING_LEN-1] = 0;
+				snprintf(_s, slen-1,
+"	\"ip4_router\" : \"%s\",\n"
+, as);
+			} break;
+		case EX_ROUTER_IP_v6: {
+				uint64_t _ip[2];
+				as[0] = 0;
+				_ip[0] = htonll(r->ip_router.V6[0]);
+				_ip[1] = htonll(r->ip_router.V6[1]);
+				inet_ntop(AF_INET6, _ip, as, sizeof(as));
+				as[IP_STRING_LEN-1] = 0;
+				snprintf(_s, slen-1,
+"	\"ip6_router\" : \"%s\",\n"
+, as);
+			} break;
+		case EX_LATENCY: {
+				double f1, f2, f3;
+				f1 = (double)r->client_nw_delay_usec / 1000.0;
+				f2 = (double)r->server_nw_delay_usec / 1000.0;
+				f3 = (double)r->appl_latency_usec / 1000.0;
+
+				snprintf(_s, slen-1,
+"	\"cli_latency\" : %f,\n"
+"	\"srv_latency\" : %f,\n"
+"	\"app_latency\" : %f,\n"
+, f1, f2, f3);
+			} break;
+		case EX_ROUTER_ID:
+				snprintf(_s, slen-1,
+"	\"engine_type\" : %u,\n"
+"	\"engine_id\" : %u,\n"
+, r->engine_type, r->engine_id);
+				break;
+		case EX_RECEIVED: {
+				char *datestr, datebuff[64];
+				when = r->received / 1000LL;
+				ts = localtime(&when);
+				strftime(datebuff, 63, "%Y-%m-%dT%H:%M:%S", ts);
+				asprintf(&datestr, "%s.%llu", datebuff, (long long unsigned)r->received % 1000L);
+
+				snprintf(_s, slen-1,
+"	\"t_received\" : \"%s\",\n"
+, datestr);
+				free(datestr);
+				} break;*/
+		}
+		i++;
+	}
+
+	/* Finally, add label */
+	if (r->label)
+	{
+		avro_set_string_union("label", r->label);
+	}
 
 	/* Output Avro record to file */
 	/* TODO: using an assert may not be the nicest way to do this, if

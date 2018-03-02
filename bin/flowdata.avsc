@@ -84,6 +84,8 @@
 		{ "name" : "engine_type",	"type" : ["null", "int"],	"default" : null },
 		{ "name" : "engine_id",		"type" : ["null", "int"],	"default" : null },
 
-		{ "name" : "t_received",	"type" : ["null", "long"],	"default" : null }
+		{ "name" : "t_received",	"type" : ["null", "long"],	"default" : null },
+
+		{ "name" : "label",		"type" : ["null", "string"],	"default" : null }
 	]
 }

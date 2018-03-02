@@ -1226,7 +1226,7 @@ char 		Ident[IDENTLEN];
 	}
 
 #ifdef HAVE_AVROEXPORT
-	if (init_avro_export(avrofile) != 0) {
+	if ((avrofile != NULL) && (init_avro_export(avrofile) != 0)) {
 		LogError("Failed to open Apache Avro file '%s'.", avrofile);
 		exit(255);
 	}
@@ -1243,7 +1243,7 @@ char 		Ident[IDENTLEN];
 	nfprof_end(&profile_data, total_flows);
 
 #ifdef HAVE_AVROEXPORT
-	finish_avro_export();
+	if (avrofile != NULL) finish_avro_export();
 #endif
 
 	if ( total_bytes == 0 ) {
