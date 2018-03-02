@@ -34,6 +34,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <avro.h>
+#include <assert.h>
 #include "export_avro.h"
 
 /*
@@ -52,7 +53,7 @@
  *
  * "Value too large for file block size"
  */
-#define DJ_AVRO_BLOCKSIZE       65536
+#define AVRO_BLOCKSIZE		65536
 
 /* Include the Avro schema */
 #include "flowdata_avsc.inc"
@@ -62,22 +63,212 @@ static avro_file_writer_t       flowavro_writer;
 static avro_value_iface_t*      flowavro_class;
 static avro_value_t             flowavro_single_record;
 
+static int open_avro_file(const char *output_filename)
+{
+	memset(&flowavro_writer, 0, sizeof(avro_file_writer_t));
+
+	return avro_file_writer_create_with_codec(output_filename, flowavro_schema, &flowavro_writer, DEFAULT_AVRO_CODEC, AVRO_BLOCKSIZE);
+}
+
+static void finish_avro_file(void)
+{
+	avro_file_writer_close(flowavro_writer);
+}
+
 int init_avro_export(const char *output_filename)
 {
 	/* Load the Avro schema */
+	memset(&flowavro_schema, 0, sizeof(flowavro_schema));
+
 	if (avro_schema_from_json_length((const char*) flowdata_avsc, flowdata_avsc_len, &flowavro_schema) != 0)
 	{
 		return -1;
 	}
 
-	return 0;
+	/*
+	 * Instantiate a single instance of the schema. We will re-use a
+	 * single record instance for the writer, as suggested in section 4
+	 * of the libavro documentation.
+	 */
+	flowavro_class = avro_generic_class_from_schema(flowavro_schema);
+
+	if (flowavro_class == NULL)
+	{
+		return -1;
+	}
+
+	if (avro_generic_value_new(flowavro_class, &flowavro_single_record) != 0)
+	{
+		return -1;
+	}
+
+	return open_avro_file(output_filename);
+}
+
+/* Wipe the single Avro record instance we re-use */
+static void wipe_avro_record(void)
+{
+	size_t	field_ct	= 0;
+	size_t	i		= 0;
+
+	assert(avro_value_reset(&flowavro_single_record) == 0);
+	assert(avro_value_get_size(&flowavro_single_record, &field_ct) == 0);
+
+	for (i = 0; i < field_ct; i++)
+	{
+		avro_value_t	rec_field;
+		avro_value_t	rec_branch;
+		int		rv;
+
+		assert(avro_value_get_by_index(&flowavro_single_record, i, &rec_field, NULL) == 0);
+
+		/*
+		 * The schema is set up such that all the optional fields have
+		 * two branches, the first of which is a 'null' value. We need
+		 * to properly initialise this value because the C version of
+		 * libavro doesn't do this.
+		 */
+		rv = avro_value_set_branch(&rec_field, 0, &rec_branch);
+		assert((rv == 0) || (rv == EINVAL));
+
+		if (rv == EINVAL)
+		{
+			/* This value is not a union, so we can skip it */
+			continue;
+		}
+
+		assert(avro_value_set_null(&rec_branch) == 0);
+	}
+}
+
+/*
+ * General remark about record setter functions:
+ * We use assert(..) to check the results, since these setter functions should
+ * in principle always succeed. If they don't, this means something is wrong
+ * with the Avro schema, and since that is included in the build, it needs a
+ * fix in the code. Dropping out with an assert(..) failure is then a safe
+ * solution.
+ *
+ * Also: there are two versions of each setter function, one that sets a value
+ * in a fixed field, and one that sets a value in an optional field (an Avro
+ * union).
+ */
+static void avro_set_long_field(const char *fieldname, long value)
+{
+	avro_value_t	rec_field;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_long(&rec_field, value) == 0);
+}
+
+static void avro_set_long_union(const char *fieldname, long value)
+{
+	avro_value_t	rec_field;
+	avro_value_t	rec_branch;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
+	assert(avro_value_set_long(&rec_branch, value) == 0);
+}
+
+static void avro_set_int_field(const char *fieldname, int value)
+{
+	avro_value_t	rec_field;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_int(&rec_field, value) == 0);
+}
+
+static void avro_set_int_union(const char *fieldname, int value)
+{
+	avro_value_t	rec_field;
+	avro_value_t	rec_branch;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
+	assert(avro_value_set_int(&rec_branch, value) == 0);
+}
+
+static void avro_set_boolean_field(const char *fieldname, int value)
+{
+	avro_value_t	rec_field;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_boolean(&rec_field, value) == 0);
+}
+
+static void avro_set_boolean_union(const char *fieldname, int value)
+{
+	avro_value_t	rec_field;
+	avro_value_t	rec_branch;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
+	assert(avro_value_set_boolean(&rec_branch, value) == 0);
+}
+
+static void avro_set_double_field(const char *fieldname, double value)
+{
+	avro_value_t	rec_field;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_double(&rec_field, value) == 0);
+}
+
+static void avro_set_double_union(const char *fieldname, double value)
+{
+	avro_value_t	rec_field;
+	avro_value_t	rec_branch;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
+	assert(avro_value_set_double(&rec_branch, value) == 0);
+}
+
+static void avro_set_string_field(const char *fieldname, const char *value)
+{
+	avro_value_t	rec_field;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_string(&rec_field, value) == 0);
+}
+
+static void avro_set_string_union(const char *fieldname, const char *value)
+{
+	avro_value_t	rec_field;
+	avro_value_t	rec_branch;
+
+	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
+	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
+	assert(avro_value_set_string(&rec_branch, value) == 0);
 }
 
 void flow_record_to_avro(void *record)
 {
+	/* Start with a clean slate */
+	wipe_avro_record();
+
+	/* Output Avro record to file */
+	/* TODO: using an assert may not be the nicest way to do this, if
+	 *       merged, this may need to be changed to return an error
+	 *       that is caught in the main nfdump program and gets
+	 *       reported to users
+	 */
+	assert(avro_file_writer_append_value(flowavro_writer, &flowavro_single_record) == 0);
 }
 
 void finish_avro_export(void)
 {
+	/* Close the output file */
+	finish_avro_file();
+
+	/* Free the single record instance */
+	avro_value_decref(&flowavro_single_record);
+
+	/* Free the generic class instance */
+	avro_value_iface_decref(flowavro_class);
+
+	/* Free the Avro schema */
+	avro_schema_decref(flowavro_schema);
 }
 
