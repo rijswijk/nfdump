@@ -629,7 +629,7 @@ int	v1_map_done = 0;
 						if ( write_file ) {
 							AppendToBuffer(nffile_w, (void *)flow_record, flow_record->size);
 						} else if ( print_record ) {
-							char *string;
+							char *string = NULL;
 							// if we need to print out this record
 							print_record(master_record, &string, tag);
 							if ( string ) {
