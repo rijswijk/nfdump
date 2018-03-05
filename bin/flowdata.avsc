@@ -71,7 +71,16 @@
 		{ "name" : "in_dst_mac_str",	"type" : ["null", "string"],	"default" : null },
 		{ "name" : "out_src_mac_str",	"type" : ["null", "string"],	"default" : null },
 
-		{ "name" : "mpls_labels",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_01",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_02",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_03",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_04",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_05",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_06",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_07",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_08",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_09",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "mpls_label_10",	"type" : ["null", "string"],	"default" : null },
 
 		{ "name" : "ip4_router_str",	"type" : ["null", "string"],	"default" : null },
 

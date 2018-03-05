@@ -228,6 +228,8 @@ static void avro_set_boolean_field(const char *fieldname, int value)
 	assert(avro_value_set_boolean(&rec_field, value) == 0);
 }
 
+/*
+ * CURRENTLY UNUSED, BUT MAY BE NEEDED IN THE FUTURE
 static void avro_set_boolean_union(const char *fieldname, int value)
 {
 	avro_value_t	rec_field;
@@ -237,7 +239,10 @@ static void avro_set_boolean_union(const char *fieldname, int value)
 	assert(avro_value_set_branch(&rec_field, 1, &rec_branch) == 0);
 	assert(avro_value_set_boolean(&rec_branch, value) == 0);
 }
+ */
 
+/*
+ * CURRENTLY UNUSED, BUT MAY BE NEEDED IN THE FUTURE
 static void avro_set_double_field(const char *fieldname, double value)
 {
 	avro_value_t	rec_field;
@@ -245,6 +250,7 @@ static void avro_set_double_field(const char *fieldname, double value)
 	assert(avro_value_get_by_name(&flowavro_single_record, fieldname, &rec_field, NULL) == 0);
 	assert(avro_value_set_double(&rec_field, value) == 0);
 }
+ */
 
 static void avro_set_double_union(const char *fieldname, double value)
 {
@@ -531,69 +537,80 @@ void flow_record_to_avro(void *record)
 				avro_set_string_union("out_src_mac", mac2_str);
 			}
 			break;
-		/*case EX_MPLS: {
-				unsigned int i;
-				for ( i=0; i<10; i++ ) {
-					snprintf(_s, slen-1,
-"	\"mpls_%u\" : \"%u-%u-%u\",\n", i+1
-, r->mpls_label[i] >> 4 , (r->mpls_label[i] & 0xF ) >> 1, r->mpls_label[i] & 1 );
-					_slen = strlen(data_string);
-					_s = data_string + _slen;
-					slen = STRINGSIZE - _slen;
+		case EX_MPLS:
+			{
+				/* FIXME:
+				 * Having a fixed number of MPLS labels seems
+				 * a bit of a kludge. If that ever changes,
+				 * this code will need to be update
+				 * accordingly.
+				 */
+				int	j		= 0;
+				char	label_str[14]	= { 0 };
+				char	label_val[64]	= { 0 };
+
+				for (j = 0; j < 10; j++)
+				{
+					snprintf(label_str, 14, "mpls_label_%02d", j + 1);
+					snprintf(label_val, 64, "%u-%u-%u", 
+						r->mpls_label[j] >> 4,
+						(r->mpls_label[i] & 0xF ) >> 1,
+						r->mpls_label[i] & 1);
+
+					avro_set_string_union(label_str, label_val);
 				}
-			} break;
-		case EX_ROUTER_IP_v4: {
-				uint32_t _ip;
-				as[0] = 0;
+			}
+			break;
+		case EX_ROUTER_IP_v4:
+			{
+				uint32_t	_ip			= 0;
+				char		ipstr[INET_ADDRSTRLEN]	= { 0 };
+
 				_ip = htonl(r->ip_router.V4);
-				inet_ntop(AF_INET, &_ip, as, sizeof(as));
-				as[IP_STRING_LEN-1] = 0;
-				snprintf(_s, slen-1,
-"	\"ip4_router\" : \"%s\",\n"
-, as);
-			} break;
-		case EX_ROUTER_IP_v6: {
-				uint64_t _ip[2];
-				as[0] = 0;
+
+				assert(inet_ntop(AF_INET, &_ip, ipstr, INET_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("ip4_router_str", ipstr);
+			}
+			break;
+		case EX_ROUTER_IP_v6:
+			{
+				uint64_t	_ip[2]			= { 0 };
+				char		ipstr[INET6_ADDRSTRLEN]	= { 0 };
+
 				_ip[0] = htonll(r->ip_router.V6[0]);
 				_ip[1] = htonll(r->ip_router.V6[1]);
-				inet_ntop(AF_INET6, _ip, as, sizeof(as));
-				as[IP_STRING_LEN-1] = 0;
-				snprintf(_s, slen-1,
-"	\"ip6_router\" : \"%s\",\n"
-, as);
-			} break;
-		case EX_LATENCY: {
-				double f1, f2, f3;
-				f1 = (double)r->client_nw_delay_usec / 1000.0;
-				f2 = (double)r->server_nw_delay_usec / 1000.0;
-				f3 = (double)r->appl_latency_usec / 1000.0;
 
-				snprintf(_s, slen-1,
-"	\"cli_latency\" : %f,\n"
-"	\"srv_latency\" : %f,\n"
-"	\"app_latency\" : %f,\n"
-, f1, f2, f3);
-			} break;
+				assert(inet_ntop(AF_INET6, _ip, ipstr, INET6_ADDRSTRLEN) != NULL);
+
+				avro_set_string_union("ip6_router_str", ipstr);
+			}
+			break;
+		case EX_LATENCY: 
+			{
+				double client_latency	= 0.0f;
+				double server_latency	= 0.0f;
+				double app_latency	= 0.0f;
+
+				client_latency = (double) r->client_nw_delay_usec / 1000.0f;
+				server_latency = (double) r->server_nw_delay_usec / 1000.0f;
+				app_latency = (double) r->appl_latency_usec / 1000.0f;
+
+				avro_set_double_union("cli_latency", client_latency);
+				avro_set_double_union("srv_latency", server_latency);
+				avro_set_double_union("app_latency", app_latency);
+			}
+			break;
 		case EX_ROUTER_ID:
-				snprintf(_s, slen-1,
-"	\"engine_type\" : %u,\n"
-"	\"engine_id\" : %u,\n"
-, r->engine_type, r->engine_id);
-				break;
-		case EX_RECEIVED: {
-				char *datestr, datebuff[64];
-				when = r->received / 1000LL;
-				ts = localtime(&when);
-				strftime(datebuff, 63, "%Y-%m-%dT%H:%M:%S", ts);
-				asprintf(&datestr, "%s.%llu", datebuff, (long long unsigned)r->received % 1000L);
-
-				snprintf(_s, slen-1,
-"	\"t_received\" : \"%s\",\n"
-, datestr);
-				free(datestr);
-				} break;*/
+			avro_set_int_union("engine_type", r->engine_type);
+			avro_set_int_union("engine_id", r->engine_id);
+			break;
+		case EX_RECEIVED:
+			avro_set_long_union("t_received", r->received);
+			break;
 		}
+
+		/* Process next extension */
 		i++;
 	}
 
