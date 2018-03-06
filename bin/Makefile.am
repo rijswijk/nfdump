@@ -81,7 +81,7 @@ BUILT_SOURCES += flowdata_avsc.inc
 CLEANFILES += flowdata_avsc.inc
 
 if AVROEXTENDED
-flowdata_avsc.inc: flowdata.avsc
+flowdata_avsc.inc: flowdata_extended.avsc
 	xxd -i flowdata_extended.avsc flowdata_avsc.inc
 else
 flowdata_avsc.inc: flowdata.avsc
