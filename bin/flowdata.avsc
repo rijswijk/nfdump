@@ -1,0 +1,36 @@
+{
+	"type" :	"record",
+	"name" :	"NetworkFlowDataV1",
+	"namespace" :	"nl.surfnet.flowdata.avro",
+	"doc" :		"Network Flow Data Record for analysis in Hadoop environments",
+	"fields" : [
+		{ "name" : "sampled",		"type" : "boolean" },
+		{ "name" : "start_ts",		"type" : "long" },
+		{ "name" : "end_ts",		"type" : "long" },
+		{ "name" : "export_sysid",	"type" : "long" },
+		{ "name" : "protocol",		"type" : "int" },
+	
+		{ "name" : "src_v4_str",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "src_v6_str",	"type" : ["null", "string"],	"default" : null },
+		
+		{ "name" : "dst_v4_str",	"type" : ["null", "string"],	"default" : null },
+		{ "name" : "dst_v6_str",	"type" : ["null", "string"],	"default" : null },
+	
+		{ "name" : "src_port",		"type" : ["null", "int"],	"default" : null },
+		{ "name" : "dst_port",		"type" : ["null", "int"],	"default" : null },
+		{ "name" : "icmp_type",		"type" : ["null", "int"],	"default" : null },
+		{ "name" : "icmp_code",		"type" : ["null", "int"],	"default" : null },
+		
+		{ "name" : "fwd_status",	"type" : "int" },
+		{ "name" : "tcp_flags",		"type" : "string" },
+		{ "name" : "src_tos",		"type" : "int" },
+		{ "name" : "in_packets",	"type" : "long" },
+		{ "name" : "in_bytes",		"type" : "long" },
+
+		{ "name" : "src_as",		"type" : ["null", "int"],	"default" : null },
+		{ "name" : "dst_as",		"type" : ["null", "int"],	"default" : null },
+
+		{ "name" : "src_mask",		"type" : ["null", "int"],	"default" : null },
+		{ "name" : "dst_mask",		"type" : ["null", "int"],	"default" : null },
+	]
+}
