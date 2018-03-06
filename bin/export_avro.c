@@ -111,7 +111,11 @@ int init_avro_export(const char *output_filename)
 	/* Load the Avro schema */
 	memset(&flowavro_schema, 0, sizeof(flowavro_schema));
 
+#ifdef HAVE_EXTENDED_AVRO
+	if (avro_schema_from_json_length((const char*) flowdata_extended_avsc, flowdata_extended_avsc_len, &flowavro_schema) != 0)
+#else
 	if (avro_schema_from_json_length((const char*) flowdata_avsc, flowdata_avsc_len, &flowavro_schema) != 0)
+#endif
 	{
 		return -1;
 	}
