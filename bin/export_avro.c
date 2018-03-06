@@ -69,13 +69,14 @@
 #endif
 
 /*
- * The Avro codec to use. The default setting is to use the gzip codec,
- * which is the most space efficient and is always included in builds of
- * the Avro library. If need be, and if it is available in your local build
- * of the Avro library, you can also choose snappy, which will perform
- * markedly better in terms of speed.
+ * The Avro codec to use. The default setting is to use the snappy codec,
+ * which has the best compression vs. speed performance of the codecs
+ * supported by the library. If snappy is not available, we will fall
+ * back to the gzip codec, which is about 3 times slower, but compresses
+ * about 35% better.
  */
-#define DEFAULT_AVRO_CODEC	"deflate"
+#define DEFAULT_AVRO_CODEC	"snappy"
+#define FALLBACK_AVRO_CODEC	"deflate"
 
 /*
  * The Avro writer block size; you may need to increase this if
@@ -98,7 +99,12 @@ static int open_avro_file(const char *output_filename)
 {
 	memset(&flowavro_writer, 0, sizeof(avro_file_writer_t));
 
-	return avro_file_writer_create_with_codec(output_filename, flowavro_schema, &flowavro_writer, DEFAULT_AVRO_CODEC, AVRO_BLOCKSIZE);
+	if ((avro_file_writer_create_with_codec(output_filename, flowavro_schema, &flowavro_writer, DEFAULT_AVRO_CODEC, AVRO_BLOCKSIZE) != 0) && (avro_file_writer_create_with_codec(output_filename, flowavro_schema, &flowavro_writer, FALLBACK_AVRO_CODEC, AVRO_BLOCKSIZE) != 0))
+	{
+		return -1;
+	}
+
+	return 0;
 }
 
 static void finish_avro_file(void)
