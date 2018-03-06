@@ -321,8 +321,10 @@ void flow_record_to_avro(void *record)
 	ts = (r->last * 1000L) + r->msec_last;
 	avro_set_long_field("end_ts", ts);
 
+#ifdef HAVE_EXTENDED_AVRO
 	/* Flow type */
 	avro_set_string_field("type", TestFlag(r->flags, FLAG_EVENT) ? "EVENT" : "FLOW");
+#endif
 
 	/* Is the flow sampled? */
 	avro_set_boolean_field("sampled", TestFlag(r->flags, FLAG_SAMPLED) ? 1 : 0);
@@ -349,14 +351,19 @@ void flow_record_to_avro(void *record)
 		assert(inet_ntop(AF_INET6, _src, ipstr, INET6_ADDRSTRLEN) != NULL);
 
 		avro_set_string_union("src_v6_str", ipstr);
+#ifdef HAVE_EXTENDED_AVRO
 		avro_set_long_union("src_v6_int_hi", r->V6.srcaddr[0]);
 		avro_set_long_union("src_v6_int_lo", r->V6.srcaddr[1]);
+#endif
 
 		assert(inet_ntop(AF_INET6, _dst, ipstr, INET6_ADDRSTRLEN) != NULL);
 
 		avro_set_string_union("dst_v6_str", ipstr);
+
+#ifdef HAVE_EXTENDED_AVRO
 		avro_set_long_union("dst_v6_int_hi", r->V6.dstaddr[0]);
 		avro_set_long_union("dst_v6_int_lo", r->V6.dstaddr[1]);
+#endif
 	} 
 	else 
 	{
@@ -371,12 +378,16 @@ void flow_record_to_avro(void *record)
 		assert(inet_ntop(AF_INET, &_src, ipstr, INET_ADDRSTRLEN) != NULL);
 
 		avro_set_string_union("src_v4_str", ipstr);
+#ifdef HAVE_EXTENDED_AVRO
 		avro_set_int_union("src_v4_int", r->V4.srcaddr);
+#endif
 
 		assert(inet_ntop(AF_INET, &_dst, ipstr, INET_ADDRSTRLEN) != NULL);
 
 		avro_set_string_union("dst_v4_str", ipstr);
+#ifdef HAVE_EXTENDED_AVRO
 		avro_set_int_union("dst_v4_int", r->V4.dstaddr);
+#endif
 	}
 	
 	/* ICMP information or source and destination port */
@@ -415,8 +426,10 @@ void flow_record_to_avro(void *record)
 		{
 		case EX_IO_SNMP_2:
 		case EX_IO_SNMP_4:
+#ifdef HAVE_EXTENDED_AVRO
 				avro_set_int_union("input_snmp", r->input);
 				avro_set_int_union("output_snmp", r->output);
+#endif
 				break;
 		case EX_AS_2:
 		case EX_AS_4:
@@ -424,15 +437,21 @@ void flow_record_to_avro(void *record)
 				avro_set_int_union("dst_as", r->dstas);
 				break;
 		case EX_BGPADJ:
+#ifdef HAVE_EXTENDED_AVRO
 				avro_set_int_union("next_as", r->bgpNextAdjacentAS);
 				avro_set_int_union("prev_as", r->bgpPrevAdjacentAS);
+#endif
 				break;
 		case EX_MULIPLE:
 				avro_set_int_union("src_mask", r->src_mask);
 				avro_set_int_union("dst_mask", r->dst_mask);
+#ifdef HAVE_EXTENDED_AVRO
 				avro_set_int_union("dst_tos", r->dst_tos);
 				avro_set_int_union("direction", r->dir);
+#endif
 				break;
+#ifdef HAVE_EXTENDED_AVRO
+		/* All remaining extensions are only exported in case the extended Avro schema is used */
 		case EX_NEXT_HOP_v4: 
 			{
 				uint32_t	_ip			= 0;
@@ -608,17 +627,20 @@ void flow_record_to_avro(void *record)
 		case EX_RECEIVED:
 			avro_set_long_union("t_received", r->received);
 			break;
+#endif /* HAVE_EXTENDED_AVRO */
 		}
 
 		/* Process next extension */
 		i++;
 	}
 
+#ifdef HAVE_EXTENDED_AVRO
 	/* Finally, add label */
 	if (r->label)
 	{
 		avro_set_string_union("label", r->label);
 	}
+#endif
 
 	/* Output Avro record to file */
 	/* TODO: using an assert may not be the nicest way to do this, if

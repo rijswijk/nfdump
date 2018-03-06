@@ -1,8 +1,8 @@
 {
 	"type" :	"record",
-	"name" :	"NetworkFlowDataV1",
-	"namespace" :	"nl.surfnet.flowdata.avro",
-	"doc" :		"Network Flow Data Record for analysis in Hadoop environments",
+	"name" :	"NetworkFlowDataExtendedV1",
+	"namespace" :	"nl.surfnet.flowdataextended.avro",
+	"doc" :		"Network Flow Data Record for analysis in Hadoop environments (extended form)",
 	"fields" : [
 		{ "name" : "type",		"type" : "string" },
 		{ "name" : "sampled",		"type" : "boolean" },

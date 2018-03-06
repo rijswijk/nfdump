@@ -277,6 +277,15 @@ AS_IF([test "x$avroexport" = xyes], [
 	
 	AC_DEFINE_UNQUOTED(HAVE_AVROEXPORT, 1, [enable export of flow records in Apache Avro format for use in Hadoop environments])
 	AM_CONDITIONAL(AVROEXPORT, true)
+
+	AC_ARG_ENABLE(avroextended, [AS_HELP_STRING([--enable-avroextended], [Use the extended Apache Avro schema that covers all possible flow record fields (default is no)])], [avroextended=${enableval}], [avroextended=no])
+
+	AS_IF([test "x$avroextended" = xyes], [
+		AC_DEFINE_UNQUOTED(HAVE_EXTENDED_AVRO, 1, [use the extended Apache Avro schema that covers all possible flow record fields])
+		AM_CONDITIONAL(AVROEXTENDED, true)
+	],[
+		AM_CONDITIONAL(AVROEXTENDED, false)
+	])
 ], [ 
 	AM_CONDITIONAL(AVROEXPORT, false)
 ])
